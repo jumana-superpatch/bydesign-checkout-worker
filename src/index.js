@@ -31,150 +31,52 @@ export default {
 		try {
 			const url = new URL(request.url);
 			console.log(url.pathname);
-			// === CASE 1: CUSTOMER LOOKUP ===
 			if (url.pathname === "/lookup-checkout") {
 				const email = url.searchParams.get("email");
 				if (!email) {
-					return jsonResponse({ did: null, error: "Missing email" }, 400);
+					return jsonResponse({ error: "Missing email" }, 400);
 				}
 
-				console.log(`Looking up email: ${email}`);
+				try {
+					console.log(`Looking up customer & rep for email: ${email}`);
 
-				// 1. Check Shopify
-				const shopifyCustomer = await findCustomerInShopify(
-					email,
-					env.SHOPIFY_SHOP,
-					env.SHAPETECH_ADMIN_API_KEY
-				);
+					// Run customer + rep lookup in parallel
+					const [customerData, repResp] = await Promise.all([
+						findCustomerInByDesign(email, env.BYDESIGN_BASE, env.BYDESIGN_API_KEY),
+						fetch(`${env.BYDESIGN_BASE}/VoxxLife/api/rep/validateRepEmail?email=${encodeURIComponent(email)}`, {
+							headers: {
+								Authorization: `Basic ${env.BYDESIGN_API_KEY}`,
+								Accept: "application/json",
+							},
+						}),
+					]);
 
-				if (shopifyCustomer) {
-					const did =
-						shopifyCustomer.metafields?.edges?.find(
-							(edge) =>
-								edge.node.namespace === "external" &&
-								edge.node.key === "bydesign_id"
-						)?.node.value || null;
-
-					return jsonResponse({ did });
-				}
-
-				// 2. Check ByDesign
-				const byDesignCustomer = await findCustomerInByDesign(
-					email,
-					env.BYDESIGN_BASE,
-					env.BYDESIGN_API_KEY
-				);
-
-				if (byDesignCustomer) {
-					const createdCustomer = await createCustomerInShopify(
-						byDesignCustomer,
-						env.SHOPIFY_SHOP,
-						env.SHAPETECH_ADMIN_API_KEY
-					);
-
-					if (
-						byDesignCustomer.ShipStreet1 &&
-						byDesignCustomer.ShipCity &&
-						byDesignCustomer.ShipState &&
-						byDesignCustomer.ShipCountry &&
-						byDesignCustomer.ShipPostalCode
-					) {
-						await createCustomerAddressInShopify(
-							createdCustomer.id,
-							byDesignCustomer,
-							env.SHOPIFY_SHOP,
-							env.SHAPETECH_ADMIN_API_KEY
-						);
+					// Customer
+					let customer = null;
+					if (customerData) {
+						customer = {
+							did: String(customerData.CustomerDID || ""),
+							email: customerData.Email || email,
+						};
 					}
 
-					return jsonResponse({
-						did: String(byDesignCustomer.CustomerDID || ""),
-					});
+					// Rep
+					let rep = null;
+					if (repResp.ok) {
+						const repValid = await repResp.json(); // this should be true/false
+						rep = {
+							isRep: repValid === false, // false = valid rep
+							email: email,
+						};
+					}
+
+					return jsonResponse({ customer, rep });
+				} catch (err) {
+					console.error("Parallel lookup failed:", err);
+					return jsonResponse({ error: err.message }, 500);
 				}
-
-				return jsonResponse({ did: null });
 			}
-			// === CASE 3: CUSTOMER → REP LOOKUP FLOW ===
 
-			// if (url.pathname === "/lookup-checkout") {
-			// 	const email = url.searchParams.get("email");
-			// 	if (!email) {
-			// 		return jsonResponse({ error: "Missing email" }, 400);
-			// 	}
-
-			// 	try {
-			// 		// 1. Customer lookup
-			// 		const custResp = await fetch(
-			// 			`${env.BYDESIGN_BASE}/VoxxLife/api/users/customer/CustomerLookup?email=${encodeURIComponent(email)}`,
-			// 			{
-			// 				headers: {
-			// 					Authorization: `Basic ${env.BYDESIGN_API_KEY}`,
-			// 					Accept: "application/json",
-			// 				},
-			// 			}
-			// 		);
-
-			// 		if (!custResp.ok) {
-			// 			return jsonResponse({ error: "Customer lookup failed" }, 404);
-			// 		}
-
-			// 		const custData = await custResp.json();
-			// 		const customerDID = custData?.CustomerDID;
-			// 		if (!customerDID) {
-			// 			return jsonResponse({ error: "Customer not found" }, 404);
-			// 		}
-
-			// 		// 2. Get RepDID for customer
-			// 		const repLinkResp = await fetch(
-			// 			`${env.BYDESIGN_BASE}/VoxxLife/api/rep/PublicInfo/GetForCustomer/${encodeURIComponent(customerDID)}`,
-			// 			{
-			// 				headers: {
-			// 					Authorization: `Basic ${env.BYDESIGN_API_KEY}`,
-			// 					Accept: "application/json",
-			// 				},
-			// 			}
-			// 		);
-
-			// 		let repDID = null;
-			// 		if (repLinkResp.ok) {
-			// 			const repLink = await repLinkResp.json();
-			// 			repDID = repLink?.RepDID;
-			// 		}
-
-			// 		// 3. Get Rep info (if RepDID found)
-			// 		let repData = {};
-			// 		if (repDID) {
-			// 			const repInfoResp = await fetch(
-			// 				`${env.BYDESIGN_BASE}/VoxxLife/api/User/Rep/${encodeURIComponent(repDID)}/info`,
-			// 				{
-			// 					headers: {
-			// 						Authorization: `Basic ${env.BYDESIGN_API_KEY}`,
-			// 						Accept: "application/json",
-			// 					},
-			// 				}
-			// 			);
-			// 			if (repInfoResp.ok) {
-			// 				repData = await repInfoResp.json();
-			// 			}
-			// 		}
-
-			// 		return jsonResponse({
-			// 			customer: {
-			// 				did: customerDID,
-			// 				email: custData?.Email || email,
-			// 			},
-			// 			rep: {
-			// 				did: repDID || null,
-			// 				email: repData?.Email || null,
-			// 				firstName: repData?.FirstName || null,
-			// 				lastName: repData?.LastName || null,
-			// 			},
-			// 		});
-			// 	} catch (err) {
-			// 		console.error("Customer→Rep flow failed:", err);
-			// 		return jsonResponse({ error: err.message }, 500);
-			// 	}
-			// }
 
 
 			// Unknown endpoint
