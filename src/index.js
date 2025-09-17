@@ -68,6 +68,7 @@ export default {
 				]);
 
 				if (byDesignCustomer) {
+					console.log(byDesignCustomer);
 					//Get REP INFO
 					const isRep = await validateRepEmail(email, env.BYDESIGN_BASE, env.BYDESIGN_API_KEY);
 
@@ -226,49 +227,49 @@ async function validateRepEmail(email, base, apiKey) {
 
 
 async function getRepForCustomer(customerDID, base, apiKey) {
-  // Step 1: Get RepDID for the customer
-  const repForCustomerResponse = await fetch(
-    `${base}/VoxxLife/api/rep/PublicInfo/GetForCustomer/${customerDID}`,
-    {
-      method: "GET",
-      headers: {
-        Authorization: `Basic ${apiKey}`,
-        Accept: "application/json",
-      },
-    }
-  );
+	// Step 1: Get RepDID for the customer
+	const repForCustomerResponse = await fetch(
+		`${base}/VoxxLife/api/rep/PublicInfo/GetForCustomer/${customerDID}`,
+		{
+			method: "GET",
+			headers: {
+				Authorization: `Basic ${apiKey}`,
+				Accept: "application/json",
+			},
+		}
+	);
 
-  if (!repForCustomerResponse.ok) {
-    console.error("Failed GetForCustomer:", repForCustomerResponse.status);
-    return null;
-  }
+	if (!repForCustomerResponse.ok) {
+		console.error("Failed GetForCustomer:", repForCustomerResponse.status);
+		return null;
+	}
 
-  const repForCustomerData = await repForCustomerResponse.json();
-  const repDID = repForCustomerData?.RepDID;
-  if (!repDID) return null;
+	const repForCustomerData = await repForCustomerResponse.json();
+	const repDID = repForCustomerData?.RepDID;
+	if (!repDID) return null;
 
-  // Step 2: Get Rep info (email)
-  const repInfoResponse = await fetch(
-    `${base}/VoxxLife/api/User/Rep/${repDID}/info`,
-    {
-      method: "GET",
-      headers: {
-        Authorization: `Basic ${apiKey}`,
-        Accept: "application/json",
-      },
-    }
-  );
+	// Step 2: Get Rep info (email)
+	const repInfoResponse = await fetch(
+		`${base}/VoxxLife/api/User/Rep/${repDID}/info`,
+		{
+			method: "GET",
+			headers: {
+				Authorization: `Basic ${apiKey}`,
+				Accept: "application/json",
+			},
+		}
+	);
 
-  if (!repInfoResponse.ok) {
-    console.error("Failed Rep info:", repInfoResponse.status);
-    return { repDID };
-  }
+	if (!repInfoResponse.ok) {
+		console.error("Failed Rep info:", repInfoResponse.status);
+		return { repDID };
+	}
 
-  const repInfoData = await repInfoResponse.json();
-  return {
-    repDID,
-    repEmail: repInfoData?.Email || null,
-  };
+	const repInfoData = await repInfoResponse.json();
+	return {
+		repDID,
+		repEmail: repInfoData?.Email || null,
+	};
 }
 
 
