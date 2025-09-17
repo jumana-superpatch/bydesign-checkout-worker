@@ -138,28 +138,35 @@ async function findCustomerInByDesign(email, base, apiKey) {
 	return null;
 }
 
-async function validateRepEmail(email, base, apiKey) {
-	const res = await fetch(
-		`${base}/VoxxLife/api/rep/validateRepEmail?email=${encodeURIComponent(email)}`,
-		{
-			headers: {
-				Authorization: `Basic ${apiKey}`,
-				Accept: "application/json",
-			},
-		}
-	);
+async function validateRepEmail(email, env) {
+  const [customerData, repRespXML] = await Promise.all([
+    findCustomerInByDesign(email, env.BYDESIGN_BASE, env.BYDESIGN_API_KEY),
+    fetch(
+      `${env.BYDESIGN_BASE}/VoxxLife/api/rep/validateRepEmail?email=${encodeURIComponent(email)}`,
+      {
+        headers: {
+          Authorization: `Basic ${env.BYDESIGN_API_KEY}`,
+          Accept: "application/xml",
+        },
+      }
+    ).then(r => r.text()) // get raw XML string
+  ]);
 
-	if (!res.ok) {
-		console.error("Rep validate call failed:", res.status);
-		return false;
-	}
+  // Parse <IsSuccessful>
+  let isRep = false;
+  const match = repRespXML.match(/<IsSuccessful>(.*?)<\/IsSuccessful>/);
+  if (match) {
+    const val = match[1].trim();
+    // "False" means the email is already in system = rep
+    isRep = val === "False";
+  }
 
-	const json = await res.json();
-	console.log("validateRepEmail raw response:", json);
-
-	// API returns `false` if email is a valid rep
-	return json === false;
+  return {
+    customer: customerData?.did ? { did: customerData.did } : null,
+    rep: { isRep },
+  };
 }
+
 
 async function createCustomerInShopify(customer, shop, token) {
 	const mutation = `
