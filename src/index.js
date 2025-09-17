@@ -30,7 +30,6 @@ export default {
 
 		try {
 			const url = new URL(request.url);
-			console.log(url.pathname);
 			if (url.pathname === "/lookup-checkout") {
 				const email = url.searchParams.get("email");
 				if (!email) {
@@ -40,64 +39,34 @@ export default {
 				try {
 					console.log(`Looking up customer & rep for email: ${email}`);
 
-					// Step 1: parallel customer + rep validate call
+					// Run in parallel
 					const [customerData, repResp] = await Promise.all([
 						findCustomerInByDesign(email, env.BYDESIGN_BASE, env.BYDESIGN_API_KEY),
-						fetch(`${env.BYDESIGN_BASE}/VoxxLife/api/rep/validateRepEmail?email=${encodeURIComponent(email)}`, {
-							headers: {
-								Authorization: `Basic ${env.BYDESIGN_API_KEY}`,
-								Accept: "application/json",
-							},
-						}),
+						fetch(
+							`${env.BYDESIGN_BASE}/VoxxLife/api/rep/validateRepEmail?email=${encodeURIComponent(email)}`,
+							{
+								headers: {
+									Authorization: `Basic ${env.BYDESIGN_API_KEY}`,
+									Accept: "application/json",
+								},
+							}
+						),
 					]);
 
-					// ---------------- Customer ----------------
+					// Customer
 					let customer = null;
 					if (customerData) {
-						console.log("ByDesign customer data:", customerData);
 						customer = {
 							did: String(customerData.CustomerDID || ""),
-							email: customerData.Email || email,
 						};
 					}
 
-					// ---------------- Rep ----------------
-					let rep = null;
+					// Rep
+					let rep = { isRep: false };
 					if (repResp.ok) {
 						const repValid = await repResp.json();
-						console.log("validateRepEmail response:", repValid);
-
-						if (repValid === false) {
-							// Email is a valid rep → fetch DID + info
-							try {
-								// Option A: via CustomerLookup if present
-								if (customerData?.RepCustomerDID) {
-									console.log("Rep DID found from customerData:", customerData.RepCustomerDID);
-									const repInfoResp = await fetch(`${env.BYDESIGN_BASE}/VoxxLifeSandbox/api/User/Rep/${customerData.RepCustomerDID}/info`, {
-										headers: {
-											Authorization: `Basic ${env.BYDESIGN_API_KEY}`,
-											Accept: "application/json",
-										},
-									});
-
-									if (repInfoResp.ok) {
-										const repInfo = await repInfoResp.json();
-										console.log("Rep info response:", repInfo);
-
-										rep = {
-											isRep: true,
-											did: String(repInfo?.RepDID || customerData.RepCustomerDID),
-											email: repInfo?.Email || email,
-											name: `${repInfo?.FirstName || ""} ${repInfo?.LastName || ""}`.trim(),
-										};
-									}
-								}
-							} catch (repErr) {
-								console.error("Failed to fetch rep info:", repErr);
-							}
-						} else {
-							console.log("Email is not a rep.");
-						}
+						// API returns false if valid rep
+						rep.isRep = (repValid === false);
 					}
 
 					return jsonResponse({ customer, rep });
@@ -107,10 +76,6 @@ export default {
 				}
 			}
 
-
-
-
-			// Unknown endpoint
 			return jsonResponse({ error: "Unknown endpoint" }, 404);
 		} catch (err) {
 			console.error("Worker error:", err.message);
