@@ -39,18 +39,15 @@ export default {
 				try {
 					console.log(`Looking up customer & rep for email: ${email}`);
 
-					// Run in parallel
 					const [customerData, repValid] = await Promise.all([
 						findCustomerInByDesign(email, env.BYDESIGN_BASE, env.BYDESIGN_API_KEY),
 						validateRepEmail(email, env.BYDESIGN_BASE, env.BYDESIGN_API_KEY),
 					]);
 
-					// ---------------- Customer ----------------
 					const customer = customerData
 						? { did: String(customerData.CustomerDID || "") }
 						: null;
 
-					// ---------------- Rep ----------------
 					const rep = { isRep: repValid };
 
 					return jsonResponse({ customer, rep });
@@ -138,34 +135,29 @@ async function findCustomerInByDesign(email, base, apiKey) {
 	return null;
 }
 
-async function validateRepEmail(email, env) {
-  const [customerData, repRespXML] = await Promise.all([
-    findCustomerInByDesign(email, env.BYDESIGN_BASE, env.BYDESIGN_API_KEY),
-    fetch(
-      `${env.BYDESIGN_BASE}/VoxxLife/api/rep/validateRepEmail?email=${encodeURIComponent(email)}`,
-      {
-        headers: {
-          Authorization: `Basic ${env.BYDESIGN_API_KEY}`,
-          Accept: "application/xml",
-        },
-      }
-    ).then(r => r.text()) // get raw XML string
-  ]);
+async function validateRepEmail(email, base, apiKey) {
+	const repRespXML = await fetch(
+		`${base}/VoxxLife/api/rep/validateRepEmail?email=${encodeURIComponent(email)}`,
+		{
+			headers: {
+				Authorization: `Basic ${apiKey}`,
+				Accept: "application/xml",
+			},
+		}
+	).then(r => r.text());
 
-  // Parse <IsSuccessful>
-  let isRep = false;
-  const match = repRespXML.match(/<IsSuccessful>(.*?)<\/IsSuccessful>/);
-  if (match) {
-    const val = match[1].trim();
-    // "False" means the email is already in system = rep
-    isRep = val === "False";
-  }
+	// Parse <IsSuccessful>
+	let isRep = false;
+	const match = repRespXML.match(/<IsSuccessful>(.*?)<\/IsSuccessful>/);
+	if (match) {
+		const val = match[1].trim();
+		// "False" means the email already exists in the system (rep/customer)
+		isRep = val === "False";
+	}
 
-  return {
-    customer: customerData?.did ? { did: customerData.did } : null,
-    rep: { isRep },
-  };
+	return isRep;
 }
+
 
 
 async function createCustomerInShopify(customer, shop, token) {
