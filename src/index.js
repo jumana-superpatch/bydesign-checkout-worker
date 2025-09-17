@@ -40,7 +40,7 @@ export default {
 				try {
 					console.log(`Looking up customer & rep for email: ${email}`);
 
-					// Run customer + rep lookup in parallel
+					// Step 1: parallel customer + rep validate call
 					const [customerData, repResp] = await Promise.all([
 						findCustomerInByDesign(email, env.BYDESIGN_BASE, env.BYDESIGN_API_KEY),
 						fetch(`${env.BYDESIGN_BASE}/VoxxLife/api/rep/validateRepEmail?email=${encodeURIComponent(email)}`, {
@@ -51,23 +51,53 @@ export default {
 						}),
 					]);
 
-					// Customer
+					// ---------------- Customer ----------------
 					let customer = null;
 					if (customerData) {
+						console.log("ByDesign customer data:", customerData);
 						customer = {
 							did: String(customerData.CustomerDID || ""),
 							email: customerData.Email || email,
 						};
 					}
 
-					// Rep
+					// ---------------- Rep ----------------
 					let rep = null;
 					if (repResp.ok) {
-						const repValid = await repResp.json(); // this should be true/false
-						rep = {
-							isRep: repValid === false, // false = valid rep
-							email: email,
-						};
+						const repValid = await repResp.json();
+						console.log("validateRepEmail response:", repValid);
+
+						if (repValid === false) {
+							// Email is a valid rep → fetch DID + info
+							try {
+								// Option A: via CustomerLookup if present
+								if (customerData?.RepCustomerDID) {
+									console.log("Rep DID found from customerData:", customerData.RepCustomerDID);
+									const repInfoResp = await fetch(`${env.BYDESIGN_BASE}/VoxxLifeSandbox/api/User/Rep/${customerData.RepCustomerDID}/info`, {
+										headers: {
+											Authorization: `Basic ${env.BYDESIGN_API_KEY}`,
+											Accept: "application/json",
+										},
+									});
+
+									if (repInfoResp.ok) {
+										const repInfo = await repInfoResp.json();
+										console.log("Rep info response:", repInfo);
+
+										rep = {
+											isRep: true,
+											did: String(repInfo?.RepDID || customerData.RepCustomerDID),
+											email: repInfo?.Email || email,
+											name: `${repInfo?.FirstName || ""} ${repInfo?.LastName || ""}`.trim(),
+										};
+									}
+								}
+							} catch (repErr) {
+								console.error("Failed to fetch rep info:", repErr);
+							}
+						} else {
+							console.log("Email is not a rep.");
+						}
 					}
 
 					return jsonResponse({ customer, rep });
@@ -76,6 +106,7 @@ export default {
 					return jsonResponse({ error: err.message }, 500);
 				}
 			}
+
 
 
 
