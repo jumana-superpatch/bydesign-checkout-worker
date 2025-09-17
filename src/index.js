@@ -225,6 +225,52 @@ async function validateRepEmail(email, base, apiKey) {
 }
 
 
+async function getRepForCustomer(customerDID, base, apiKey) {
+  // Step 1: Get RepDID for the customer
+  const repForCustomerResponse = await fetch(
+    `${base}/VoxxLife/api/rep/PublicInfo/GetForCustomer/${customerDID}`,
+    {
+      method: "GET",
+      headers: {
+        Authorization: `Basic ${apiKey}`,
+        Accept: "application/json",
+      },
+    }
+  );
+
+  if (!repForCustomerResponse.ok) {
+    console.error("Failed GetForCustomer:", repForCustomerResponse.status);
+    return null;
+  }
+
+  const repForCustomerData = await repForCustomerResponse.json();
+  const repDID = repForCustomerData?.RepDID;
+  if (!repDID) return null;
+
+  // Step 2: Get Rep info (email)
+  const repInfoResponse = await fetch(
+    `https://webapi.securefreedom.com/VoxxLife/api/User/Rep/${repDID}/info`,
+    {
+      method: "GET",
+      headers: {
+        Authorization: `Basic ${apiKey}`,
+        Accept: "application/json",
+      },
+    }
+  );
+
+  if (!repInfoResponse.ok) {
+    console.error("Failed Rep info:", repInfoResponse.status);
+    return { repDID };
+  }
+
+  const repInfoData = await repInfoResponse.json();
+  return {
+    repDID,
+    repEmail: repInfoData?.Email || null,
+  };
+}
+
 
 async function createCustomerInShopify(customer, shop, token) {
 	const mutation = `
@@ -316,3 +362,4 @@ async function createCustomerAddressInShopify(customerId, byDesignCustomer, shop
 
 	return json.data?.customerAddressCreate?.customerAddress || null;
 }
+
