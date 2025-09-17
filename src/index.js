@@ -249,7 +249,7 @@ async function getRepForCustomer(customerDID, base, apiKey) {
 
   // Step 2: Get Rep info (email)
   const repInfoResponse = await fetch(
-    `https://webapi.securefreedom.com/VoxxLife/api/User/Rep/${repDID}/info`,
+    `${base}/VoxxLife/api/User/Rep/${repDID}/info`,
     {
       method: "GET",
       headers: {
