@@ -136,7 +136,7 @@ async function findCustomerInByDesign(email, base, apiKey) {
 }
 
 async function validateRepEmail(email, base, apiKey) {
-  const repRespXML = await fetch(
+  const res = await fetch(
     `${base}/VoxxLife/api/rep/validateRepEmail?email=${encodeURIComponent(email)}`,
     {
       headers: {
@@ -144,23 +144,18 @@ async function validateRepEmail(email, base, apiKey) {
         Accept: "application/xml",
       },
     }
-  ).then(r => r.text());
+  );
 
-  // Debug log raw response (optional)
-  console.log("Rep validate raw XML:", repRespXML);
+  const xml = await res.text();
+  console.log("Rep validate raw XML:", xml);
 
-  // Parse <IsSuccessful>
-  let isRep = false;
-  const match = repRespXML.match(/<IsSuccessful>(.*?)<\/IsSuccessful>/i);
-  if (match) {
-    const val = match[1].trim().toLowerCase();
-    // IMPORTANT: False => valid rep
-    isRep = val === "false";
-  }
+  const match = xml.match(/<IsSuccessful>(.*?)<\/IsSuccessful>/);
+  if (!match) return false;
 
-  return isRep;
+  const val = match[1].trim();
+  // "False" means it's already in system = valid rep
+  return val === "False";
 }
-
 
 
 
