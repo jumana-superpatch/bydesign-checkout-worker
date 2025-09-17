@@ -139,6 +139,7 @@ async function validateRepEmail(email, base, apiKey) {
   const res = await fetch(
     `${base}/VoxxLife/api/rep/validateRepEmail?email=${encodeURIComponent(email)}`,
     {
+      method: "POST", 
       headers: {
         Authorization: `Basic ${apiKey}`,
         Accept: "application/xml",
@@ -153,7 +154,7 @@ async function validateRepEmail(email, base, apiKey) {
   if (!match) return false;
 
   const val = match[1].trim();
-  // "False" means it's already in system = valid rep
+  // In ByDesign, "False" means: email already exists (valid rep)
   return val === "False";
 }
 
