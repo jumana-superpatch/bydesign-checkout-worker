@@ -68,6 +68,18 @@ export default {
 				]);
 
 				if (byDesignCustomer) {
+					//Get REP INFO
+					const isRep = await validateRepEmail(email, env.BYDESIGN_BASE, env.BYDESIGN_API_KEY);
+
+					let repDetails = null;
+					if (!isRep && byDesignCustomer.CustomerDID) {
+						repDetails = await getRepForCustomer(
+							byDesignCustomer.CustomerDID,
+							env.BYDESIGN_BASE,
+							env.BYDESIGN_API_KEY
+						);
+					}
+
 					// Step 3: Create Shopify customer since missing there
 					const createdCustomer = await createCustomerInShopify(
 						byDesignCustomer,
@@ -90,9 +102,17 @@ export default {
 						);
 					}
 
+					// return jsonResponse({
+					// 	customer: { did: String(byDesignCustomer.CustomerDID || "") },
+					// 	rep: { isRep },
+					// });
 					return jsonResponse({
 						customer: { did: String(byDesignCustomer.CustomerDID || "") },
-						rep: { isRep },
+						rep: {
+							isRep,
+							repDID: repDetails?.repDID || null,
+							repEmail: repDetails?.repEmail || null,
+						},
 					});
 				}
 
