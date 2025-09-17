@@ -33,28 +33,74 @@ export default {
 			if (url.pathname === "/lookup-checkout") {
 				const email = url.searchParams.get("email");
 				if (!email) {
-					return jsonResponse({ error: "Missing email" }, 400);
+					return jsonResponse({ did: null, rep: { isRep: false }, error: "Missing email" }, 400);
 				}
 
-				try {
-					console.log(`Looking up customer & rep for email: ${email}`);
+				console.log(`Looking up email: ${email}`);
 
-					const [customerData, repValid] = await Promise.all([
-						findCustomerInByDesign(email, env.BYDESIGN_BASE, env.BYDESIGN_API_KEY),
-						validateRepEmail(email, env.BYDESIGN_BASE, env.BYDESIGN_API_KEY),
-					]);
+				// Step 1: Check Shopify first
+				const shopifyCustomer = await findCustomerInShopify(
+					email,
+					env.SHOPIFY_SHOP,
+					env.SHAPETECH_ADMIN_API_KEY
+				);
 
-					const customer = customerData
-						? { did: String(customerData.CustomerDID || "") }
-						: null;
+				if (shopifyCustomer) {
+					const did =
+						shopifyCustomer.metafields?.edges?.find(
+							(edge) =>
+								edge.node.namespace === "external" && edge.node.key === "bydesign_id"
+						)?.node.value || null;
 
-					const rep = { isRep: repValid };
+					// Also check rep in parallel
+					const isRep = await validateRepEmail(email, env.BYDESIGN_BASE, env.BYDESIGN_API_KEY);
 
-					return jsonResponse({ customer, rep });
-				} catch (err) {
-					console.error("Parallel lookup failed:", err);
-					return jsonResponse({ error: err.message }, 500);
+					return jsonResponse({
+						customer: { did },
+						rep: { isRep },
+					});
 				}
+
+				// Step 2: Check ByDesign (customer + rep in parallel)
+				const [byDesignCustomer, isRep] = await Promise.all([
+					findCustomerInByDesign(email, env.BYDESIGN_BASE, env.BYDESIGN_API_KEY),
+					validateRepEmail(email, env.BYDESIGN_BASE, env.BYDESIGN_API_KEY),
+				]);
+
+				if (byDesignCustomer) {
+					// Step 3: Create Shopify customer since missing there
+					const createdCustomer = await createCustomerInShopify(
+						byDesignCustomer,
+						env.SHOPIFY_SHOP,
+						env.SHAPETECH_ADMIN_API_KEY
+					);
+
+					if (
+						byDesignCustomer.ShipStreet1 &&
+						byDesignCustomer.ShipCity &&
+						byDesignCustomer.ShipState &&
+						byDesignCustomer.ShipCountry &&
+						byDesignCustomer.ShipPostalCode
+					) {
+						await createCustomerAddressInShopify(
+							createdCustomer.id,
+							byDesignCustomer,
+							env.SHOPIFY_SHOP,
+							env.SHAPETECH_ADMIN_API_KEY
+						);
+					}
+
+					return jsonResponse({
+						customer: { did: String(byDesignCustomer.CustomerDID || "") },
+						rep: { isRep },
+					});
+				}
+
+				// Step 4: Neither system has them
+				return jsonResponse({
+					customer: null,
+					rep: { isRep },
+				});
 			}
 
 			return jsonResponse({ error: "Unknown endpoint" }, 404);
@@ -136,26 +182,26 @@ async function findCustomerInByDesign(email, base, apiKey) {
 }
 
 async function validateRepEmail(email, base, apiKey) {
-  const res = await fetch(
-    `${base}/VoxxLife/api/rep/validateRepEmail?email=${encodeURIComponent(email)}`,
-    {
-      method: "POST", 
-      headers: {
-        Authorization: `Basic ${apiKey}`,
-        Accept: "application/xml",
-      },
-    }
-  );
+	const res = await fetch(
+		`${base}/VoxxLife/api/rep/validateRepEmail?email=${encodeURIComponent(email)}`,
+		{
+			method: "POST",
+			headers: {
+				Authorization: `Basic ${apiKey}`,
+				Accept: "application/xml",
+			},
+		}
+	);
 
-  const xml = await res.text();
-  console.log("Rep validate raw XML:", xml);
+	const xml = await res.text();
+	console.log("Rep validate raw XML:", xml);
 
-  const match = xml.match(/<IsSuccessful>(.*?)<\/IsSuccessful>/);
-  if (!match) return false;
+	const match = xml.match(/<IsSuccessful>(.*?)<\/IsSuccessful>/);
+	if (!match) return false;
 
-  const val = match[1].trim();
-  // In ByDesign, "False" means: email already exists (valid rep)
-  return val === "False";
+	const val = match[1].trim();
+	// In ByDesign, "False" means: email already exists (valid rep)
+	return val === "False";
 }
 
 
