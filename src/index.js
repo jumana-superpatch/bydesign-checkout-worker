@@ -40,34 +40,18 @@ export default {
 					console.log(`Looking up customer & rep for email: ${email}`);
 
 					// Run in parallel
-					const [customerData, repResp] = await Promise.all([
+					const [customerData, repValid] = await Promise.all([
 						findCustomerInByDesign(email, env.BYDESIGN_BASE, env.BYDESIGN_API_KEY),
-						fetch(
-							`${env.BYDESIGN_BASE}/VoxxLife/api/rep/validateRepEmail?email=${encodeURIComponent(email)}`,
-							{
-								headers: {
-									Authorization: `Basic ${env.BYDESIGN_API_KEY}`,
-									Accept: "application/json",
-								},
-							}
-						),
+						validateRepEmail(email, env.BYDESIGN_BASE, env.BYDESIGN_API_KEY),
 					]);
 
-					// Customer
-					let customer = null;
-					if (customerData) {
-						customer = {
-							did: String(customerData.CustomerDID || ""),
-						};
-					}
+					// ---------------- Customer ----------------
+					const customer = customerData
+						? { did: String(customerData.CustomerDID || "") }
+						: null;
 
-					// Rep
-					let rep = { isRep: false };
-					if (repResp.ok) {
-						const repValid = await repResp.json();
-						// API returns false if valid rep
-						rep.isRep = (repValid === false);
-					}
+					// ---------------- Rep ----------------
+					const rep = { isRep: repValid };
 
 					return jsonResponse({ customer, rep });
 				} catch (err) {
@@ -152,6 +136,29 @@ async function findCustomerInByDesign(email, base, apiKey) {
 		return data.find((c) => c.Email?.toLowerCase() === email.toLowerCase()) || null;
 	}
 	return null;
+}
+
+async function validateRepEmail(email, base, apiKey) {
+	const res = await fetch(
+		`${base}/VoxxLife/api/rep/validateRepEmail?email=${encodeURIComponent(email)}`,
+		{
+			headers: {
+				Authorization: `Basic ${apiKey}`,
+				Accept: "application/json",
+			},
+		}
+	);
+
+	if (!res.ok) {
+		console.error("Rep validate call failed:", res.status);
+		return false;
+	}
+
+	const json = await res.json();
+	console.log("validateRepEmail raw response:", json);
+
+	// API returns `false` if email is a valid rep
+	return json === false;
 }
 
 async function createCustomerInShopify(customer, shop, token) {
