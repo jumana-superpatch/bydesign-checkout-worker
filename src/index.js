@@ -54,11 +54,18 @@ export default {
 
 					// Also check rep in parallel
 					const isRep = await validateRepEmail(email, env.BYDESIGN_BASE, env.BYDESIGN_API_KEY);
-
-					return jsonResponse({
-						customer: { did },
-						rep: { isRep },
-					});
+					let repDetails = null;
+					if (did) {
+						repDetails = await getRepForCustomer(did, env.BYDESIGN_BASE, env.BYDESIGN_API_KEY);
+						return jsonResponse({
+							customer: { did },
+							rep: {
+								isRep: isRep,
+								repDID: repDetails?.repDID || null,
+								repEmail: repDetails?.repEmail || null,
+							},
+						});
+					}
 				}
 
 				// Step 2: Check ByDesign (customer + rep in parallel)
