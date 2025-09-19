@@ -80,7 +80,6 @@ export default {
 					console.log("byDesignCustomer", byDesignCustomer);
 
 					//Get REP INFO
-					const isRep = await validateRepEmail(email, env.BYDESIGN_BASE, env.BYDESIGN_API_KEY);
 					console.log('isRep', isRep);
 					let repDetails = null;
 					if (!isRep && byDesignCustomer.CustomerDID) {
